@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IncidentMemory - AI Incident Response Agent</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--line:#30363d;--tx:#e6edf3;--mut:#8b949e;--ac:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 system-ui,Segoe UI,sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;border-bottom:1px solid var(--line)}
+h1{font-size:18px;margin:0}h1 span{color:var(--ac)}h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin:0 0 10px}
+.badge{font-size:12px;padding:3px 10px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}.badge.on{color:var(--ok);border-color:var(--ok)}
+main{display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:16px;padding:16px 24px;max-width:1400px;margin:auto}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+textarea,input,select{width:100%;background:#0d1117;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:8px;font:inherit}
+textarea{min-height:230px;font:12px/1.5 ui-monospace,Consolas,monospace;resize:vertical}
+button{background:var(--ac);color:#04121f;border:0;border-radius:6px;padding:9px 14px;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--tx);border:1px solid var(--line)}button:disabled{opacity:.5}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.pill{font-size:12px;padding:3px 9px;border-radius:99px;background:#1f2937;border:1px solid var(--line);display:inline-block;margin:2px 4px 2px 0}
+.sev1{color:var(--bad)}.sev2{color:var(--warn)}.sev3{color:var(--ok)}
+.bar{height:8px;background:#21262d;border-radius:99px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--ok)}
+.match{border-left:3px solid var(--ac);padding:6px 12px;margin:8px 0;background:#0d1117;border-radius:0 6px 6px 0}
+.mut{color:var(--mut)}.big{font-size:22px;font-weight:700}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat{background:#0d1117;border:1px solid var(--line);border-radius:8px;padding:10px;text-align:center}
+label.step{display:flex;gap:8px;align-items:flex-start;padding:4px 0}label.step input{width:auto;margin-top:4px}
+pre{white-space:pre-wrap;background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:10px;margin:0;font-size:12px}
+.hide{display:none}.loader{color:var(--ac)}
+</style></head><body>
+<header><h1>Incident<span>Memory</span> <span class="mut" style="font-weight:400">| AI incident response agent that remembers every outage</span></h1><span id="llm" class="badge">...</span></header>
+<main>
+<section>
+  <div class="card"><h2>1. Simulate an outage</h2><div class="row" id="scen"></div>
+    <h2>Alert / logs</h2><textarea id="logs" placeholder="Paste alerts or logs here..."></textarea>
+    <div class="row" style="margin-top:10px"><button id="go">Analyze incident</button><button class="ghost" id="reset">Reset demo memory</button></div></div>
+  <div class="card"><h2>Memory impact</h2><div class="grid" id="stats"></div><div id="ttrbar" class="mut" style="margin-top:10px"></div></div>
+</section>
+<section>
+  <div id="empty" class="card mut">Pick a scenario on the left and click <b>Analyze incident</b>. The agent recalls similar past incidents and proposes a fix.</div>
+  <div id="res" class="hide">
+    <div class="card"><h2>Diagnosis <span id="mode" class="badge"></span></h2>
+      <div class="row"><span class="big" id="sev"></span><span class="big mut" id="svc"></span></div>
+      <p id="sum" style="margin:4px 0"></p><p><b>Likely root cause:</b> <span id="rc"></span></p>
+      <div class="mut">Confidence <b id="confn"></b>%</div><div class="bar"><i id="conf"></i></div>
+      <div style="margin-top:10px" id="sigs"></div></div>
+    <div class="card"><h2>Recalled from memory</h2><div id="matches"></div></div>
+    <div class="card"><h2>Recommended actions <span class="mut" id="eta"></span></h2><div id="steps"></div>
+      <h2 style="margin-top:14px">Status update draft</h2><pre id="slack"></pre>
+      <div class="row" style="margin-top:8px"><button class="ghost" id="copy">Copy update</button></div></div>
+    <div class="card"><h2>2. Close the loop (the agent learns)</h2>
+      <div class="row"><input id="f_title" placeholder="Incident title"><input id="f_rc" placeholder="Actual root cause"></div>
+      <div class="row"><input id="f_ttr" type="number" placeholder="Minutes to resolve" style="max-width:200px">
+        <select id="f_help" style="max-width:260px"><option value="1">Suggestion helped</option><option value="0">Suggestion did not help</option></select>
+        <button id="save">Save to memory</button></div><div id="saved" class="mut"></div></div>
+  </div>
+</section></main>
+<script>
+const $=id=>document.getElementById(id);let cur=null;
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const j=(u,o)=>fetch(u,o).then(r=>r.json());
+const post=(u,b)=>j(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});
+async function stats(){const s=await j("/api/stats");
+ $("llm").textContent=s.llm?"Claude AI: ON":"Offline mode (set ANTHROPIC_API_KEY for Claude)";$("llm").className="badge"+(s.llm?" on":"");
+ $("stats").innerHTML=`<div class="stat"><div class="big">${s.total}</div><div class="mut">incidents in memory</div></div>
+ <div class="stat"><div class="big">${s.avg_ttr_manual??"-"}m</div><div class="mut">avg fix time, manual</div></div>
+ <div class="stat"><div class="big" style="color:var(--ok)">${s.avg_ttr_assisted??"-"}${s.avg_ttr_assisted?"m":""}</div><div class="mut">avg fix time, with agent</div></div>`;
+ $("ttrbar").textContent=s.helpful_rate!=null?`Suggestion helpful rate: ${s.helpful_rate}% (${s.helpful} helpful / ${s.unhelpful} not). Feedback re-ranks memory.`:"Save resolved incidents below to watch the agent get faster and smarter.";}
+async function init(){const sc=await j("/api/scenarios");
+ $("scen").innerHTML=sc.map((s,i)=>`<button class="ghost" data-i="${i}" title="${esc(s.description)}">${esc(s.name)}</button>`).join("");
+ $("scen").onclick=e=>{const i=e.target.dataset.i;if(i!=null){$("logs").value=sc[i].logs;$("f_title").value=sc[i].name}};
+ stats();}
+$("go").onclick=async()=>{const logs=$("logs").value.trim();if(!logs)return;
+ $("go").disabled=true;$("go").textContent="Analyzing...";
+ const r=await post("/api/analyze",{logs});cur=r;$("go").disabled=false;$("go").textContent="Analyze incident";
+ $("empty").classList.add("hide");$("res").classList.remove("hide");
+ const d=r.diagnosis;$("sev").textContent=d.severity;$("sev").className="big sev"+d.severity.slice(-1);$("svc").textContent=r.service;
+ $("mode").textContent=r.mode==="claude"?"reasoned by Claude":"memory match (offline)";
+ $("sum").textContent=d.summary;$("rc").textContent=d.root_cause;$("confn").textContent=d.confidence;$("conf").style.width=d.confidence+"%";
+ $("sigs").innerHTML=r.signals.map(s=>`<span class="pill" title="${esc(s.evidence)}">${esc(s.label)}</span>`).join("");
+ $("matches").innerHTML=r.matches.length?r.matches.map(m=>`<div class="match"><b>${esc(m.id)}</b> ${esc(m.title)} <span class="pill">similarity ${(m.score*100).toFixed(0)}%</span>
+  <div class="mut">Root cause: ${esc(m.root_cause)}</div><div class="mut">Fixed in ${m.ttr_minutes} min using ${esc(m.runbook)}${m.agent_assisted?" (agent-assisted)":""}${m.helpful?` | ${m.helpful} helpful votes`:""}</div></div>`).join(""):"<span class='mut'>Nothing similar yet. Resolve this one and the agent will remember it.</span>";
+ $("steps").innerHTML=r.steps.map(s=>`<label class="step"><input type="checkbox"><span>${esc(s)}</span></label>`).join("");
+ $("eta").textContent=r.eta_minutes?`| estimated ${r.eta_minutes} min with memory`:"";$("slack").textContent=r.slack_update;
+ $("f_rc").value=d.root_cause;$("saved").textContent="";};
+$("copy").onclick=()=>navigator.clipboard.writeText($("slack").textContent);
+$("save").onclick=async()=>{if(!cur)return;const top=cur.matches[0];
+ const res=await post("/api/resolve",{title:$("f_title").value||"Untitled incident",service:cur.service,severity:cur.diagnosis.severity,logs:$("logs").value,
+  root_cause:$("f_rc").value,resolution:[...document.querySelectorAll("#steps span")].map(x=>x.textContent),runbook:cur.runbook,
+  ttr_minutes:+$("f_ttr").value||0,tags:cur.tags,matched_id:top?top.id:null,helpful:$("f_help").value==="1"});
+ $("saved").textContent=res.error?res.error:`Saved as ${res.saved}. Analyze the same logs again and watch it appear in memory.`;stats();};
+$("reset").onclick=async()=>{await post("/api/reset",{});$("res").classList.add("hide");$("empty").classList.remove("hide");stats();};
+init();
+</script></body></html>

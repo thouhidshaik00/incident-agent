@@ -1,0 +1,8 @@
+[
+ {"name":"Inventory API timeouts","description":"Traffic spike, requests hanging",
+  "logs":"2026-09-29T10:14:02Z [inventory-api] ERROR HikariPool-1 - Connection is not available, request timed out after 30000ms\n2026-09-29T10:14:03Z [inventory-api] WARN  FATAL: sorry, too many clients already\n2026-09-29T10:14:05Z [inventory-api] ERROR GET /stock/883 -> 503 Service Unavailable (pool exhausted, 20/20 active, 143 waiting)\n2026-09-29T10:14:09Z [alertmanager] FIRING p99_latency > 25s for 5m service=inventory-api\n2026-09-29T10:14:10Z [alertmanager] FIRING http_5xx_rate 38% service=inventory-api\nNote: marketing email went out at 10:05, traffic is 4x normal"},
+ {"name":"Recommendation pods restarting","description":"Right after a release",
+  "logs":"2026-09-29T14:40:11Z [recs-service] deployed v5.2.0\n2026-09-29T14:52:44Z [kubelet] Container recs-service OOMKilled (exit code 137)\n2026-09-29T14:53:10Z [kubelet] Back-off restarting failed container, CrashLoopBackOff\n2026-09-29T14:53:12Z [recs-service] java.lang.OutOfMemoryError: Java heap space\n2026-09-29T14:55:00Z [alertmanager] FIRING pod_restarts > 5 service=recs-service\nmemory usage graph: linear climb since deploy, no plateau"},
+ {"name":"Billing calls all failing","description":"Suddenly at midnight",
+  "logs":"2026-09-30T00:00:03Z [billing-connector] ERROR SSL handshake failed: x509: certificate has expired or is not yet valid\n2026-09-30T00:00:04Z [billing-connector] ERROR POST /charge failed: tls: failed to verify certificate\n2026-09-30T00:00:10Z [alertmanager] FIRING payment_success_rate 0% service=billing-connector\n2026-09-30T00:01:00Z [support] customers report checkout errors, 100% of card payments failing"}
+]
